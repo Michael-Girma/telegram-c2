@@ -9,7 +9,7 @@ import (
 
 func main() {
 	var config = config.NewConfig()
-	var server = c2.NewTGC2(config)
+	var server = c2.NewTgC2(config)
 	var listeners sync.WaitGroup
 
 	listeners.Add(1)
