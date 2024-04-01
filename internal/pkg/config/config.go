@@ -14,6 +14,11 @@ type Config struct {
 	ClientAPPHash string
 	Phone         string
 	Password      string
+	Environment   string
+}
+
+type IConfig interface {
+	IsTestEnv() bool
 }
 
 func NewConfig() *Config {
@@ -36,5 +41,10 @@ func NewConfig() *Config {
 		ClientAPPHash: os.Getenv("CLIENT_APP_HASH"),
 		Phone:         os.Getenv("PHONE"),
 		Password:      os.Getenv("PASSWORD"),
+		Environment:   os.Getenv("ENVIRONMENT"),
 	}
+}
+
+func (c *Config) IsTestEnv() bool {
+	return c.Environment == "TEST"
 }
